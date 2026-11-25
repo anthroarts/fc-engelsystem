@@ -89,12 +89,56 @@ cd docker
 docker compose up -d
 ```
 
+#### ConCat login
+
+Set these variables in the web server environment. Use the application's public URL for `APP_URL`
+and the credentials and endpoints issued for its ConCat client.
+
+```dotenv
+APP_URL=https://volunteers.example.org
+OAUTH_CLIENT_ID=<client ID>
+OAUTH_CLIENT_SECRET=<client secret>
+OAUTH_URL_AUTHORIZE=<authorization endpoint>
+OAUTH_URL_ACCESS_TOKEN=<token endpoint>
+OAUTH_URL_RESOURCE=<user info endpoint>
+```
+
+Register `https://volunteers.example.org/oauth/concat` as the redirect URI in ConCat, using the
+same host and optional path prefix as `APP_URL`. The login button appears once all five
+`OAUTH_*` settings are supplied. To read the client secret from a mounted file, set
+`OAUTH_CLIENT_SECRET_FILE` to its path inside the web server.
+
+For local Docker Compose tests, put the environment file and Compose override in the ignored
+`.local-tests/` directory. Point `es_server.env_file` to the environment file in the override.
+[Local ConCat setup](README_concat.md#run-a-local-test-deployment)
+
 #### Set Up / Migrate Database
 Create the Database Schema (on a fresh install) or import database changes to migrate it to the newest version
 ```bash
 cd docker
 docker compose exec es_server bin/migrate
 ```
+
+### Amazon ECS deployment
+
+The production Terraform configuration supplies `APP_URL` and the three ConCat endpoints to
+the ECS task. The task reads `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` from AWS Systems
+Manager Parameter Store. Register `https://engelsystem.furcon.org/oauth/concat` with the ConCat
+client. The application uses the same `pii:basic con:read` scopes as the old fork.
+
+For the existing Further Confusion database, set `LEGACY_DATABASE_SCHEMA=true` in the Terraform
+task environment before deploying this image. [Legacy database setup](README_concat.md#use-the-existing-further-confusion-database-schema)
+
+The [ECS deployment workflow](.github/workflows/deploy.yml) runs on pushes to `main`.
+Configure the deployment role to trust the fork's immutable OIDC subject for `main` and the
+`sts.amazonaws.com` audience. [Deployment role setup](README_concat.md#publish-and-roll-out-an-image)
+Coordinate the switch from the old fork so that only one workflow publishes the production tags.
+
+A push to `main` publishes the image to ECR under the commit SHA, `1`, `1.0`,
+`1.0.<run_number>`, and `latest`. The workflow deploys a revision based on the `engelsystem`
+task definition family and uses the image reference from that definition by default. Terraform
+controls the service's desired task count. To deploy the commit-SHA image explicitly, set
+`WRITE_NEW_TASK_DEFINITION_TAG` to `true` in the workflow.
 
 ### Scripts
 
